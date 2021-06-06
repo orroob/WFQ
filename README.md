@@ -1,2 +1,2 @@
 # WFQ
-Waiting fair queue
+this project implements Waiting fair queue.
