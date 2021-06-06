@@ -1,52 +1,21 @@
 #define _CRT_SECURE_NO_WARNINGS
-#define BUFF_SIZE 1024
+#define F_NAME_SIZE 1024
+#define INIT_SIZE 500
 
-#include <stdio.h>
-#include <string.h>
-#include <string>
 #include <queue>
 #include <fstream>
 #include <sstream>
 #include <iostream>
 #include <iomanip>
+#include "Package.h"
+
 using namespace std;
-
-typedef class Package
-{
-
-public:
-	char Sadd[16], Dadd[16];
-	int time, Sport, Dport, len, end_t;
-	double weight = 1;
-	
-public:
-	Package() = default;
-
-	friend bool operator==(const Package& p1, const Package& p2);
-	friend ostream& operator<<(ostream& os, const Package& p);
-}pck;
-
-ostream& operator<<(ostream& os, const Package& p)
-{
-	if (p.weight != 1)
-		os << p.time << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ' << p.len << ' ' << fixed << setprecision(2) << p.weight;
-	else
-		os << p.time << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ' << p.len;
-	return os;
-}
-
-bool operator==(const Package& p1, const Package& p2)
-{
-	return (!strcmp(p1.Sadd, p2.Sadd) && !strcmp(p1.Dadd, p2.Dadd) && p1.Sport == p1.Sport && p1.Dport == p2.Dport);
-}
 
 void Split(string buffer, vector <string> *data)
 {
 	stringstream input_stringstream(buffer);
 	string intermediate;
 
-
-	// Tokenizing w.r.t. space ' '
 	while (getline(input_stringstream, intermediate, ' '))
 	{
 		(*data).push_back(intermediate);
@@ -91,57 +60,92 @@ void Parse(string buffer, pck *p)
 	return;
 }
 
-int sendPacket(vector <pck> *pcktList, queue <pck> *pq) {
-	if ((*pcktList).size() == 1) 
+int addConnection(Connection c, Connection *cList, int n)
+{
+	for (int i = 0; i < n; i++)
 	{
-		int to_return = (*pcktList)[0].time + (*pcktList)[0].len;
-		(*pq).push((*pcktList).front());
-		(*pcktList).pop_back();
+		if (cList[i] == c)
+			return 0;
+	}
+	cList[n] = c;
+	return 1;
+}
+
+bool isFirst(Connection c1, Connection c2, Connection *cList)
+{
+	while (cList != NULL)
+	{
+		if (*cList == c1)
+			return true;
+		if (*cList == c2)
+			return false;
+		cList++;
+	}
+}
+
+int sendPacket(vector <pck> *pcktBuffer, queue <pck> *pq, Connection *cList) {
+	
+	if ((*pcktBuffer).size() == 1) 
+	{
+		int to_return = (*pcktBuffer)[0].time + (*pcktBuffer)[0].len;
+		(*pq).push((*pcktBuffer).front());
+		(*pcktBuffer).pop_back();
 		return to_return;
 	}
 
 	//array holding the sending times of the packets acording to GPS algorithm
 	int *times;
-	times = (int*)malloc((*pcktList).size() * sizeof(int)); 
+	times = (int*)malloc((*pcktBuffer).size() * sizeof(int)); 
 	
 	//counter of the packets in the bus
 	int counter=0;
 	int tempEnding;
 
-	for (int i = 0; i < (*pcktList).size()-1; i++) 
+	for (int i = 0; i < (*pcktBuffer).size()-1; i++) 
 	{
 		if (counter == 0) 
 		{
-			times[i] = (*pcktList)[i].time + (*pcktList)[i].len;
+			times[i] = (*pcktBuffer)[i].time + (*pcktBuffer)[i].len;
 		}
-		counter += (*pcktList)[i].weight;
+		counter += (*pcktBuffer)[i].weight;
 
 		for (int j = 0; j < i; j++)
 		{
-			if (times[j] < (*pcktList)[i].time)
+			if (times[j] < (*pcktBuffer)[i].time)
 			{
-				counter = -(*pcktList)[j].weight;
-				continue;
+				times[i] = -1;
+				break;
 			}
-			times[j] = (*pcktList)[i].time + (times[j] - (*pcktList)[i].time) / (double)((*pcktList)[j].weight / counter);
+			times[j] = (*pcktBuffer)[i].time + (times[j] - (*pcktBuffer)[i].time) / (double)((*pcktBuffer)[j].weight / counter);
 		}
 		if (counter == 0) counter = 1;
-		times[i] = (*pcktList)[i].time + (*pcktList)[i].len  / (double)((*pcktList)[i].weight / counter);
+		if(times[i] != -1)
+			times[i] = (*pcktBuffer)[i].time + (*pcktBuffer)[i].len  / (double)((*pcktBuffer)[i].weight / counter);
 	}
 	
 	int j = 0;
 
-	for (int i = 0; i < (*pcktList).size(); i++)
+	for (int i = 0; i < (*pcktBuffer).size(); i++)
 	{
+		if (times[i] == -1)
+			break;
 		if (times[i] < times[j])
 		{
 			j = i;
 		}
+		else
+		{
+			if (times[i] == times[j])
+			{
+				if (isFirst((*pcktBuffer)[i], (*pcktBuffer)[j], cList))
+					j = i;
+			}
+		}
 	}
-	int to_return = (*pcktList)[j].time + (*pcktList)[0].len;
+	int to_return = (*pcktBuffer)[j].time + (*pcktBuffer)[0].len;
 
-	(*pq).push((*pcktList)[j]);
-	(*pcktList).erase((*pcktList).begin() + j);
+	(*pq).push((*pcktBuffer)[j]);
+	(*pcktBuffer).erase((*pcktBuffer).begin() + j);
 	
 	free(times);
 	return to_return;
@@ -150,34 +154,52 @@ int sendPacket(vector <pck> *pcktList, queue <pck> *pq) {
 
 int main()
 {
-	char buffer[BUFF_SIZE];
-	cin >> buffer;
+	char fName[F_NAME_SIZE];
+	cin >> fName;
 
 	string line;
 	ifstream f;
-	f.open(buffer);
+	f.open(fName);
 	
 	queue <pck> pq;
-	vector <pck> pcktList;
-
+	vector <pck> pcktBuffer;
+	Connection *connectionsList;
+	connectionsList = (Connection*)malloc(INIT_SIZE * sizeof(Connection));
+	int connectionsCounter = 0;
 	int time = 0, endTime=0;
 
-	while (getline(f, line)) {
+	while (getline(f, line))
+	{
+		//packet has arrived
 		pck p1;
 		Parse(line, &p1);
 
-		if (endTime == 0)
-			endTime = p1.time + p1.len;
-		
-		if (p1.time > endTime) {//sending packet
-			
-			endTime = sendPacket(&pcktList, &pq);
+		//check and update if it's a new connection
+		connectionsCounter += addConnection(p1, connectionsList, connectionsCounter);
+		if (connectionsCounter % 500 == 0)
+		{
+			connectionsList = (Connection*)realloc(connectionsList, connectionsCounter * 2 * sizeof(Connection));
 		}
-		pcktList.push_back(p1);
-	}
 
+		
+		if (endTime == 0)
+		{//first packet to arrive
+			endTime = p1.time + p1.len;
+		}
+		
+
+		if (p1.time >= endTime) 
+		{//packet has finished being sent, send new packet
+
+			endTime = sendPacket(&pcktBuffer, &pq, connectionsList);
+		}
+
+		//add the new packet to the buffer
+		pcktBuffer.push_back(p1);
+	}
+	
 	//finish sending rest of the buffer
-	while(pcktList.size() != 0) sendPacket(&pcktList, &pq);
+	while(pcktBuffer.size() != 0) sendPacket(&pcktBuffer, &pq, connectionsList);
 
 	int sTime = pq.front().time;
 
@@ -191,5 +213,8 @@ int main()
 		pq.pop();
 
 	}
+
+	f.close();
+	free(connectionsList);
 	return 0;
 }
