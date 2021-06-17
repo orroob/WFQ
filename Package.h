@@ -14,7 +14,7 @@ public:
 typedef class Package : public Connection
 {
 public:
-	int time, len;
+	int arrivalTime, sendingTime, len;
 	double weight = 1;
 
 public:
@@ -26,15 +26,15 @@ public:
 std::ostream& operator<<(std::ostream& os, const Package& p)
 {
 	if (p.weight != 1)
-		os << p.time << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ' << p.len << ' ' << std::fixed << std::setprecision(2) << p.weight;
+		os <<  p.arrivalTime << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ' << p.len << ' ' << std::fixed << std::setprecision(2) << p.weight;
 	else
-		os << p.time << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ' << p.len;
+		os << p.arrivalTime << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ' << p.len;
 	return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const Connection& p)
 {
-	os << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ';// << p.len;
+	os << ' ' << p.Sadd << ' ' << p.Sport << ' ' << p.Dadd << ' ' << p.Dport << ' ';
 	return os;
 }
 
