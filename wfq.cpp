@@ -11,6 +11,22 @@
 
 using namespace std;
 
+/*
+
+	File name : wfq.cpp
+	Title : Assembler Source Code
+	version: 3.1
+	Created On : 13 / 06 / 2021
+	Comments :
+	Assumptions :	 The first run of the assembler giving the list of the labels ( with the PC address).
+	Limitations : none
+	Known Errors : none
+	Developers : Or Roob and Ido Datner
+	Notes :	The code is working as exepted - getting the files from the CMD and writing the instructoin memory (already checked)
+
+*/
+
+
 void Split(string buffer, vector <string> *data)
 {
 	stringstream input_stringstream(buffer);
@@ -34,7 +50,7 @@ void Parse(string buffer, pck *p)
 		switch (i)
 		{
 		case 0:
-			(*p).time = stoi(data[i]);
+			(*p).arrivalTime = stoi(data[i]);
 			break;
 		case 1:
 			strcpy((*p).Sadd, data[i].c_str());
@@ -60,14 +76,14 @@ void Parse(string buffer, pck *p)
 	return;
 }
 
-int addConnection(Connection c, Connection *cList, int n)
+int addConnection(Connection c, Connection *cList, int size)
 {
-	for (int i = 0; i < n; i++)
+	for (int i = 0; i < size; i++)
 	{
 		if (cList[i] == c)
 			return 0;
 	}
-	cList[n] = c;
+	cList[size] = c;
 	return 1;
 }
 
@@ -83,74 +99,102 @@ bool isFirst(Connection c1, Connection c2, Connection *cList)
 	}
 }
 
-int sendPacket(vector <pck> *pcktBuffer, queue <pck> *pq, Connection *cList) {
+void sendPacket(vector <pck> *sendBuffer, vector <pck> *pq, Connection *cList, int packetsCount) 
+{
 	
-	if ((*pcktBuffer).size() == 1) 
+	if ((*sendBuffer).size() == 1) 
 	{
-		int to_return = (*pcktBuffer)[0].time + (*pcktBuffer)[0].len;
-		(*pq).push((*pcktBuffer).front());
-		(*pcktBuffer).pop_back();
-		return to_return;
+		if ((*pq).size() != 0)
+		{
+			(*sendBuffer)[0].sendingTime = max((*sendBuffer)[0].arrivalTime + (*sendBuffer)[0].len, (*pq)[packetsCount-1].sendingTime + (*sendBuffer)[0].len);
+			(*pq).push_back((*sendBuffer).front());
+			(*sendBuffer).pop_back();
+		}
+		else
+		{
+			(*sendBuffer)[0].sendingTime = (*sendBuffer)[0].arrivalTime + (*sendBuffer)[0].len;
+			(*pq).push_back((*sendBuffer).front());
+			(*sendBuffer).pop_back();
+		}
+		return;
 	}
 
 	//array holding the sending times of the packets acording to GPS algorithm
-	int *times;
-	times = (int*)malloc((*pcktBuffer).size() * sizeof(int)); 
+	double *finishTimes;
+	finishTimes = (double*)malloc((*sendBuffer).size() * sizeof(double));
 	
 	//counter of the packets in the bus
 	int counter=0;
 	int tempEnding;
-
-	for (int i = 0; i < (*pcktBuffer).size()-1; i++) 
+	double *weights;
+	//weights = (double*)malloc((*sendBuffer).size() * sizeof(double));
+	weights = (double*)calloc((*sendBuffer).size(), sizeof(double));
+	for (int i = 0; i < (*sendBuffer).size(); i++)
 	{
-		if (counter == 0) 
+		finishTimes[i] = (*sendBuffer)[i].arrivalTime + (*sendBuffer)[i].len;
+	}
+
+	for (int i = 0; i < (*sendBuffer).size(); i++)
+	{
+		for (int k = 0; k <= i; k++)
 		{
-			times[i] = (*pcktBuffer)[i].time + (*pcktBuffer)[i].len;
+			if (finishTimes[k] > (*sendBuffer)[i].arrivalTime)
+			{
+				weights[i] += (*sendBuffer)[k].weight;
+			}
 		}
-		counter += (*pcktBuffer)[i].weight;
+		finishTimes[i] = (*sendBuffer)[i].arrivalTime + (*sendBuffer)[i].len * weights[i];
 
 		for (int j = 0; j < i; j++)
 		{
-			if (times[j] < (*pcktBuffer)[i].time)
+			if (finishTimes[j] > (*sendBuffer)[i].arrivalTime)
 			{
-				times[i] = -1;
-				break;
+				finishTimes[j] = (*sendBuffer)[i].arrivalTime + (finishTimes[j] - (*sendBuffer)[i].arrivalTime) / weights[j] * weights[i] / (*sendBuffer)[i].weight;
 			}
-			times[j] = (*pcktBuffer)[i].time + (times[j] - (*pcktBuffer)[i].time) / (double)((*pcktBuffer)[j].weight / counter);
 		}
-		if (counter == 0) counter = 1;
-		if(times[i] != -1)
-			times[i] = (*pcktBuffer)[i].time + (*pcktBuffer)[i].len  / (double)((*pcktBuffer)[i].weight / counter);
 	}
-	
+
 	int j = 0;
 
-	for (int i = 0; i < (*pcktBuffer).size(); i++)
+	for (int i = 0; i < (*sendBuffer).size(); i++)
 	{
-		if (times[i] == -1)
-			break;
-		if (times[i] < times[j])
+		if (finishTimes[i] < finishTimes[j])
 		{
 			j = i;
 		}
 		else
 		{
-			if (times[i] == times[j])
+			if (finishTimes[i] == finishTimes[j])
 			{
-				if (isFirst((*pcktBuffer)[i], (*pcktBuffer)[j], cList))
+				if (isFirst((*sendBuffer)[i], (*sendBuffer)[j], cList))
 					j = i;
 			}
 		}
 	}
-	int to_return = (*pcktBuffer)[j].time + (*pcktBuffer)[0].len;
 
-	(*pq).push((*pcktBuffer)[j]);
-	(*pcktBuffer).erase((*pcktBuffer).begin() + j);
+	(*sendBuffer)[j].sendingTime = max((*sendBuffer)[j].arrivalTime + (*sendBuffer)[j].len, (*pq)[packetsCount-1].sendingTime + (*sendBuffer)[j].len);
+
+	(*pq).push_back((*sendBuffer)[j]);
+	(*sendBuffer).erase((*sendBuffer).begin() + j);
 	
-	free(times);
-	return to_return;
+	free(finishTimes);
+	free(weights);
+	return;
 }
 
+void printQueue(vector <pck> pq)
+{
+	int sTime = pq.front().arrivalTime;
+
+	while (pq.size() > 0) {
+		if (sTime < pq.front().arrivalTime)
+			sTime = pq.front().arrivalTime;
+		cout << sTime << ": " << pq.front() << "\n";
+
+		sTime += pq.front().len;
+		pq.erase(pq.begin());
+	}
+}
 
 int main()
 {
@@ -161,16 +205,16 @@ int main()
 	ifstream f;
 	f.open(fName);
 	
-	queue <pck> pq;
-	vector <pck> pcktBuffer;
+	vector <pck> pq, sendBuffer, waitBuffer;
 	Connection *connectionsList;
 	connectionsList = (Connection*)malloc(INIT_SIZE * sizeof(Connection));
-	int connectionsCounter = 0;
-	int time = 0, endTime=0;
+	int connectionsCounter = 0, sentPacketsCount = 0, endTime = 0;
+	//pck p1;
+	bool sendEnable = false;
 
 	while (getline(f, line))
 	{
-		//packet has arrived
+	//packet has arrived
 		pck p1;
 		Parse(line, &p1);
 
@@ -181,40 +225,71 @@ int main()
 			connectionsList = (Connection*)realloc(connectionsList, connectionsCounter * 2 * sizeof(Connection));
 		}
 
-		
+		//if it's the first packet arriving, set endTime
 		if (endTime == 0)
-		{//first packet to arrive
-			endTime = p1.time + p1.len;
+		{
+			endTime = p1.arrivalTime + p1.len;
 		}
-		
 
-		if (p1.time >= endTime) 
+		if (sentPacketsCount >= 207)
+		{
+			int a=0;
+		}
+		while (p1.arrivalTime > endTime && !sendBuffer.empty())
 		{//packet has finished being sent, send new packet
-
-			endTime = sendPacket(&pcktBuffer, &pq, connectionsList);
+			sendPacket(&sendBuffer, &pq, connectionsList, sentPacketsCount);
+			sentPacketsCount++;
+			endTime = pq.back().sendingTime;
 		}
 
-		//add the new packet to the buffer
-		pcktBuffer.push_back(p1);
+		//push the new packet to the buffer
+		sendBuffer.push_back(p1);
+		
 	}
-	
-	//finish sending rest of the buffer
-	while(pcktBuffer.size() != 0) sendPacket(&pcktBuffer, &pq, connectionsList);
 
-	int sTime = pq.front().time;
+	//all packets have arrived
+	//finish sending rest of the buffer
+	while (sendBuffer.size() != 0)
+	{
+		sendPacket(&sendBuffer, &pq, connectionsList, sentPacketsCount);
+		sentPacketsCount++;
+	}
 
 	//print the queue
-	while (pq.size() > 0) {
-		if (sTime < pq.front().time)
-			sTime = pq.front().time;
-		cout << sTime << ": " << pq.front() << "\n";
-		
-		sTime += pq.front().len;
-		pq.pop();
-
-	}
+	printQueue(pq);
 
 	f.close();
 	free(connectionsList);
 	return 0;
 }
+
+
+//
+		//if (p1.arrivalTime < endTime || sendBuffer.empty())
+		//{
+		//	sendBuffer.push_back(p1);
+		//	continue;
+		//}
+		//
+		//sendEnable = true;
+		//
+		//waitBuffer.push_back(p1);
+		//
+		//if (sendEnable)
+		//{
+		//	sendPacket(&sendBuffer, &pq, connectionsList, sentPacketsCount);
+		//	sentPacketsCount++;
+		//	endTime = pq.back().sendingTime;
+		//	sendEnable = false;
+		//}
+		/*
+		if(p1.arrivalTime >= endTime)
+		{//packet has finished being sent, send new packet
+			sendPacket(&sendBuffer, &pq, connectionsList, sentPacketsCount);
+			sentPacketsCount++;
+			endTime = pq.back().sendingTime;
+		}
+
+		//push the new packet to the buffer
+		sendBuffer.push_back(p1);
+		*/
