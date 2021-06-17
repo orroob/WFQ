@@ -1,2 +1,2 @@
 # WFQ
-this project implements Waiting fair queue.
+this project implements Weighted fair queueing.
